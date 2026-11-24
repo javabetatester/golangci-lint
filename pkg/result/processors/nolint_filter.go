@@ -220,25 +220,24 @@ func (p *NolintFilter) extractInlineRangeFromComment(text string, g ast.Node, fs
 		}
 	}
 
-	if strings.HasPrefix(text, "nolint:all") || !strings.HasPrefix(text, "nolint:") {
+	if !strings.HasPrefix(text, "nolint:") || isNolintAll(strings.TrimPrefix(text, "nolint:")) {
 		return buildRange(nil) // ignore all linters
 	}
 
 	text, _, _ = strings.Cut(text, "//") // allow another comment after this comment
 
 	// ignore specific linters
-	var linters []string
+	var linters, unknownLinters []string
 
 	for item := range strings.SplitSeq(strings.TrimPrefix(text, "nolint:"), ",") {
 		linterName := strings.ToLower(strings.TrimSpace(item))
 		if linterName == "all" {
-			p.unknownLintersSet = map[string]bool{}
 			return buildRange(nil)
 		}
 
 		lcs := p.dbManager.GetLinterConfigs(linterName)
 		if lcs == nil {
-			p.unknownLintersSet[linterName] = true
+			unknownLinters = append(unknownLinters, linterName)
 			linters = append(linters, linterName)
 			nolintDebugf("unknown linter %s on line %d", linterName, fset.Position(g.Pos()).Line)
 			continue
@@ -249,8 +248,22 @@ func (p *NolintFilter) extractInlineRangeFromComment(text string, g ast.Node, fs
 		}
 	}
 
+	for _, name := range unknownLinters {
+		p.unknownLintersSet[name] = true
+	}
+
 	nolintDebugf("%d: linters are %s", fset.Position(g.Pos()).Line, linters)
 	return buildRange(linters)
+}
+
+// isNolintAll reports whether the first name of the list after `nolint:` is exactly `all`.
+func isNolintAll(list string) bool {
+	name, _, _ := strings.Cut(list, ",")
+	name, _, _ = strings.Cut(name, "//")
+
+	fields := strings.Fields(name)
+
+	return len(fields) > 0 && fields[0] == "all"
 }
 
 type rangeExpander struct {

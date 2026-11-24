@@ -179,6 +179,35 @@ func TestNolintFilter_Process_invalidLinterNameWithViolationOnTheSameLine(t *tes
 	assert.Equal(t, issues, processedIssues)
 }
 
+func TestNolintFilter_Process_allIsAWholeName(t *testing.T) {
+	fileName := filepath.FromSlash("testdata/nolint_filter/all_prefix.go")
+
+	newIssue := func(line int) *result.Issue {
+		return &result.Issue{
+			Pos: token.Position{
+				Filename: fileName,
+				Line:     line,
+			},
+			FromLinter: "errcheck",
+		}
+	}
+
+	log := getMockLog()
+	log.On("Warnf", "Found unknown linters in //nolint directives: %s", "allfoo, bad3")
+
+	p := newTestNolintFilter(log)
+
+	// `allfoo` is an unknown linter, not `all`.
+	processAssertSame(t, p, newIssue(8))
+
+	// `all`, alone or in a list, ignores every linter and keeps the unknown linters of the other directives.
+	processAssertEmpty(t, p, newIssue(12), newIssue(16), newIssue(20))
+
+	p.Finish()
+
+	log.AssertExpectations(t)
+}
+
 func Test_ignoredRange_doesMatch(t *testing.T) {
 	testcases := []struct {
 		doc      string
